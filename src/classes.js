@@ -68,6 +68,8 @@ export default {
 			this.label = label;
 			this.value = value;
 			this.ctx = ctx;
+			this.useCustomLogic = resolve([config.useCustomLogic, false]);
+			this.useCustomLabels = resolve([config.useCustomLabels, false]);
 
 			// Init style
 			this.style = {
@@ -196,6 +198,19 @@ export default {
 			this.ctx.textBaseline = 'middle';
 
 			for (idx = 0; idx < ilen; ++idx) {
+				if (this.useCustomLabels === true) {
+					//Custom styling applied for the first line
+					switch(idx) {
+						case 0:
+							this.ctx.fillStyle = this.style.lineColor;
+							this.ctx.font = this.style.font.string.replace(/\d\dpx/, (this.style.font.size - 3) + 'px');
+							break;
+						default:
+							this.ctx.fillStyle = this.style.color;
+							this.ctx.font = this.style.font.string;
+					}
+				}
+
 				this.ctx.fillText(
 					this.lines[idx],
 					Math.round(x),
@@ -262,6 +277,13 @@ export default {
 			this.center.y += this.offset.y;
 
 			var valid = false;
+			var useCustomLogic = this.useCustomLogic;
+			var validVsX = false;
+			var validVsY = false;
+			var p = null;
+			var pointDistance = null;
+			var updateLoop = 0;
+			var updateLoopLimit = 300;
 
 			while (!valid) {
 				this.textRect = this.computeTextRect();
@@ -270,33 +292,194 @@ export default {
 
 				valid = true;
 
-				for (var e = 0; e < max; ++e) {
-					var element = elements[e][LABEL_KEY];
-					if (!element) {
+				if (useCustomLogic !== true) {
+					for (var e = 0; e < max; ++e) {
+						var element = elements[e][LABEL_KEY];
+						if (!element) {
+							continue;
+						}
+
+						var elPoints = element.getPoints();
+
+						for (var p = 0; p < rectPoints.length; ++p) {
+							if (element.containsPoint(rectPoints[p])) {
+								valid = false;
+								break;
+							}
+
+							if(this.containsPoint(elPoints[p])) {
+								valid = false;
+								break;
+							}
+						}
+					}
+
+					if (!valid) {
+						this.center = positioners.moveFromAnchor(this.center, 1);
+						this.center.x += this.offset.x;
+						this.center.y += this.offset.y;
+					}
+				} else {
+					// Custom positioning logic
+
+					if (++updateLoop > updateLoopLimit) {
+						break;
+					}
+					if (updateLoop > updateLoopLimit / 3) {
+						this.center.flipX = true;
+					}
+
+					validVsY = true;
+
+					// Yvalidation: check if not exceeds the canvas
+					for (p = 0; p < rectPoints.length; ++p) {
+						if (rectPoints[p].y < 0 || rectPoints[p].y > ctx.canvas.height) {
+							validVsY = false;
+							break;
+						}
+					}
+
+					if (validVsY === true) {
+						// Y validity: resolving collissions with other labels
+						for (var e = 0; e < max; ++e) {
+							var element = elements[e][LABEL_KEY];
+							if (!element) {
+								continue;
+							}
+
+							var elPoints = element.getPoints();
+
+							for (p = 0; p < rectPoints.length; ++p) {
+								if (element.containsPoint(rectPoints[p])) {
+									validVsY = false;
+									break;
+								}
+
+								if(this.containsPoint(elPoints[p])) {
+									validVsY = false;
+									break;
+								}
+							}
+						}
+					}
+
+					if (!validVsY) {
+						this.center = moveVertically(this.center, 2);
+						valid = validVsY;
 						continue;
 					}
 
-					var elPoints = element.getPoints();
+					//continue;
+					// X validation: resolving collission with the chart
+					validVsX = true;
 
-					for (var p = 0; p < rectPoints.length; ++p) {
-						if (element.containsPoint(rectPoints[p])) {
-							valid = false;
-							break;
-						}
-
-						if(this.containsPoint(elPoints[p])) {
-							valid = false;
+					// Move when any corner is within the circle
+					for (p = 0; p < rectPoints.length; ++p) {
+						pointDistance = getPointDistance(this.center.arc, rectPoints[p]);
+						if (pointDistance <= this.center.arc.outerRadius) {
+							validVsX = false;
 							break;
 						}
 					}
-				}
 
-				if (!valid) {
-					this.center = positioners.moveFromAnchor(this.center, 1);
-					this.center.x += this.offset.x;
-					this.center.y += this.offset.y;
+					// Move when label is still too close to the center
+					if (validVsX !== false) {
+						pointDistance = getPointDistance(this.center.arc, this.center);
+						if (pointDistance < (this.labelRect.width / 2 + this.center.arc.outerRadius + this.stretch)) {
+							validVsX = false;
+						}
+					}
+
+					if (!validVsX) {
+						this.center = moveHorizontally(this.center, 2);
+						valid = validVsX;
+						continue;
+					}
 				}
 			}
+
+			function moveHorizontally(center, dist) {
+				var arc = center.arc;
+				var d = center.d;
+				var angle = (arc.startAngle + arc.endAngle) / 2;
+				var cosA = Math.cos(angle);
+				var sinA = Math.sin(angle);
+
+				var originalX = arc.x + cosA * d;
+				var originalY = arc.y + sinA * d;
+				var newX = null;
+
+				if (center.x < arc.x) {
+					newX = center.x - dist;
+				} else {
+					newX = center.x + dist;
+				}
+
+				d = getDistance(arc.x, arc.y, newX, center.y);
+
+				return {
+					x: newX,
+					y: center.y,
+					d: d,
+					arc: arc,
+					anchor: center.anchor,
+					flipX: center.flipX,
+					copy: {
+						x: newX,
+						y: center.y
+					}
+				};
+			};
+
+			function moveVertically(center, dist) {
+				var arc = center.arc;
+				var d = center.d;
+				var angle = (arc.startAngle + arc.endAngle) / 2;
+				var cosA = Math.cos(angle);
+				var sinA = Math.sin(angle);
+
+				var originalX = arc.x + cosA * d;
+				var originalY = arc.y + sinA * d;
+				var newY = null;
+
+				if ((originalY < arc.y && center.flipX !== true)
+					|| (originalY >= arc.y && center.flipX === true))  {
+					newY = center.y + dist;
+				} else {
+					newY = center.y - dist;
+				}
+
+				d = getDistance(arc.x, arc.y, center.x, newY);
+
+				return {
+					x: center.x,
+					y: newY,
+					d: d,
+					arc: arc,
+					anchor: center.anchor,
+					flipX: center.flipX,
+					copy: {
+						x: center.x,
+						y: newY
+					}
+				};
+			};
+
+			function getPointDistance(a, b) {
+				return getDistance(a.x, a.y, b.x, b.y);
+			}
+
+			function getDistance(x1, y1, x2, y2) {
+
+				var xs = x2 - x1,
+					ys = y2 - y1;
+
+				xs *= xs;
+				ys *= ys;
+
+				return Math.sqrt( xs + ys );
+			};
+
 		};
 
 		this.moveLabelToOffset = function() {

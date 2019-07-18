@@ -88,6 +88,7 @@ Chart.plugins.register({
 		var elements = args.meta.data || [];
 		var ctx = chart.ctx;
 		var el, label, index;
+		var useCustomLabels = true;
 
 		for (var i = 0; i < 2 * elements.length; ++i) {
 			index = i < elements.length ? i : i - elements.length;
@@ -101,8 +102,13 @@ Chart.plugins.register({
 			if (i < elements.length) {
 				label.update(el._view, elements, i);
 				label.drawLine(ctx);
+				if (useCustomLabels === true) {
+					label.draw(ctx);
+				}
 			} else {
-				label.draw(ctx);
+				if (useCustomLabels !== true) {
+					label.draw(ctx);
+				}
 			}
 		}
 	}

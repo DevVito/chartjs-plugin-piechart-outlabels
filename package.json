@@ -1,8 +1,8 @@
 {
-  "name": "chartjs-plugin-piechart-outlabels",
+  "name": "chartjs-plugin-piechart-outlabels-custom",
   "homepage": "http://www.chartjs.org",
   "description": "Chart.js plugin to display float data labels on pie/doughnut chart outside the border.",
-  "version": "0.1.4",
+  "version": "0.1.3-custom1",
   "license": "MIT",
   "main": "dist/chartjs-plugin-piechart-outlabels.js",
   "repository": {
